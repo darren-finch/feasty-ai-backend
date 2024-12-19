@@ -30,4 +30,15 @@ module.exports = {
     "import/no-unresolved": 0,
     "indent": ["error", 2],
   },
+  overrides: [
+    {
+      "files": ["**/*.test.ts"],
+      "parserOptions": {
+        "project": "./tsconfig.eslint.json"
+      },
+      "env": {
+        "jest": true
+      }
+    }
+  ]
 };

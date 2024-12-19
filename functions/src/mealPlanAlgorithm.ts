@@ -1,5 +1,9 @@
 import { configDotenv } from "dotenv"
 import OpenAI from "openai"
+import Food from "./Food"
+import MealPlan from "./MealPlan"
+import Meal from "./Meal"
+import { carbSourcesRef, fatSourcesRef, proteinSourcesRef } from "./foodSourcesRef"
 
 configDotenv()
 
@@ -7,209 +11,6 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 const NUM_RETRIES = 3
 const ALLOWED_CALORIE_VARIANCE_PERCENT: number = 0.03
-
-interface MealPlan {
-	totalActualCalories: number
-	totalActualCarbs: number
-	totalActualFats: number
-	totalActualProtein: number
-	meals: Meal[]
-}
-
-interface Meal {
-	name: string
-	totalCalories: number
-	totalCarbs: number
-	totalFats: number
-	totalProtein: number
-	foods: Food[]
-}
-
-interface Food {
-	name: string
-	unitCalories: number
-	unitCarbs: number
-	unitFats: number
-	unitProtein: number
-	unitAmount: number
-	desiredAmount: number
-	unit: string
-	primaryMacroClass: string
-}
-
-const proteinSourcesRef: Food[] = [
-	{
-		name: "Grilled Chicken Breast",
-		unitCalories: 120,
-		unitCarbs: 0,
-		unitFats: 3,
-		unitProtein: 26,
-		unitAmount: 4,
-		desiredAmount: 4,
-		unit: "oz",
-		primaryMacroClass: "Protein",
-	},
-	{
-		name: "Grilled Steak",
-		unitCalories: 307,
-		unitCarbs: 0,
-		unitFats: 20,
-		unitProtein: 29,
-		unitAmount: 110,
-		desiredAmount: 110,
-		unit: "g",
-		primaryMacroClass: "Protein",
-	},
-	{
-		name: "Protein Scoop",
-		unitCalories: 120,
-		unitCarbs: 3,
-		unitFats: 2,
-		unitProtein: 24,
-		unitAmount: 1,
-		desiredAmount: 1,
-		unit: "scoop",
-		primaryMacroClass: "Protein",
-	},
-	{
-		name: "Garbonzo Beans",
-		unitCalories: 364,
-		unitCarbs: 61,
-		unitFats: 6,
-		unitProtein: 19,
-		unitAmount: 100,
-		desiredAmount: 100,
-		unit: "g",
-		primaryMacroClass: "Protein",
-	},
-	{
-		name: "Fried Tofu",
-		unitCalories: 271,
-		unitCarbs: 10,
-		unitFats: 2,
-		unitProtein: 17,
-		unitAmount: 100,
-		desiredAmount: 100,
-		unit: "g",
-		primaryMacroClass: "Protein",
-	},
-]
-
-const carbSourcesRef: Food[] = [
-	{
-		name: "Pasta (cooked)",
-		unitCalories: 200,
-		unitCarbs: 42,
-		unitFats: 1,
-		unitProtein: 7,
-		unitAmount: 1,
-		desiredAmount: 1,
-		unit: "cup",
-		primaryMacroClass: "Carb",
-	},
-	{
-		name: "White Rice (cooked)",
-		unitCalories: 205,
-		unitCarbs: 45,
-		unitFats: 0.4,
-		unitProtein: 4.3,
-		unitAmount: 1,
-		desiredAmount: 1,
-		unit: "cup",
-		primaryMacroClass: "Carb",
-	},
-	{
-		name: "Whole Wheat Bread",
-		unitCalories: 69,
-		unitCarbs: 12,
-		unitFats: 1,
-		unitProtein: 3.6,
-		unitAmount: 1,
-		desiredAmount: 1,
-		unit: "slice",
-		primaryMacroClass: "Carb",
-	},
-	{
-		name: "Sweet Potato (medium, cooked)",
-		unitCalories: 112,
-		unitCarbs: 26,
-		unitFats: 0.1,
-		unitProtein: 2,
-		unitAmount: 1,
-		desiredAmount: 1,
-		unit: "medium",
-		primaryMacroClass: "Carb",
-	},
-	{
-		name: "Apple (medium)",
-		unitCalories: 95,
-		unitCarbs: 25,
-		unitFats: 0.3,
-		unitProtein: 0.5,
-		unitAmount: 1,
-		desiredAmount: 1,
-		unit: "medium",
-		primaryMacroClass: "Carb",
-	},
-]
-
-const fatSourcesRef: Food[] = [
-	{
-		name: "Olive Oil",
-		unitCalories: 119,
-		unitCarbs: 0,
-		unitFats: 13.5,
-		unitProtein: 0,
-		unitAmount: 1,
-		desiredAmount: 1,
-		unit: "tablespoon",
-		primaryMacroClass: "Fat",
-	},
-	{
-		name: "Coconut Oil",
-		unitCalories: 121,
-		unitCarbs: 0,
-		unitFats: 13.5,
-		unitProtein: 0,
-		unitAmount: 1,
-		desiredAmount: 1,
-		unit: "tablespoon",
-		primaryMacroClass: "Fat",
-	},
-	{
-		name: "Peanut Butter",
-		unitCalories: 188,
-		unitCarbs: 6,
-		unitFats: 16,
-		unitProtein: 8,
-		unitAmount: 2,
-		desiredAmount: 2,
-		unit: "tablespoons",
-		primaryMacroClass: "Fat",
-	},
-	{
-		name: "Almond Butter",
-		unitCalories: 196,
-		unitCarbs: 6,
-		unitFats: 18,
-		unitProtein: 7,
-		unitAmount: 2,
-		desiredAmount: 2,
-		unit: "tablespoons",
-		primaryMacroClass: "Fat",
-	},
-	{
-		name: "Egg Yolk (large)",
-		unitCalories: 55,
-		unitCarbs: 0.6,
-		unitFats: 4.5,
-		unitProtein: 2.7,
-		unitAmount: 1,
-		desiredAmount: 1,
-		unit: "large",
-		primaryMacroClass: "Fat",
-	},
-]
 
 export const createMealPlan = async (
 	mealsPerDay: number,
@@ -251,9 +52,8 @@ Only give me the names of each meal, the expected serving amounts, and the names
 			const mealPlanString = completion.choices[0].message.content
 			if (!mealPlanString) throw new Error("No response from ChatGPT")
 
-			let mealPlan: MealPlan | null = null
 			try {
-				mealPlan = parseAndTransformMealPlan(mealPlanString)
+				const mealPlan = parseMealPlan(mealPlanString)
 				adjustMacros(mealPlan, desiredCalories, desiredCarbs, desiredFats, desiredProteins)
 				return mealPlan
 			} catch (error) {
@@ -269,57 +69,73 @@ Only give me the names of each meal, the expected serving amounts, and the names
 	}
 }
 
-export function parseAndTransformMealPlan(mealPlanText: string): MealPlan {
-	console.log(`\n\nParsing mealPlanText = ${mealPlanText}`)
+export function parseMealPlan(mealPlanText: string): MealPlan {
+	console.log(`\n\nParsing mealPlanText = \'${mealPlanText}\'`)
+	if (mealPlanText == "") {
+		return {
+			totalActualCalories: 0,
+			totalActualCarbs: 0,
+			totalActualFats: 0,
+			totalActualProtein: 0,
+			meals: [],
+		}
+	}
+
 	const meals: Meal[] = []
 	const mealBlocks = mealPlanText.trim().split("\n\n")
 
 	mealBlocks.forEach((block) => {
+		console.log(`In for each block for block = \'${block}\'`)
 		const lines = block.split("\n")
 		const mealName = lines[0].trim()
 
 		const foods: Food[] = lines.slice(1).map((line) => {
 			const [foodName, serving] = line.replace("- ", "").split(" | ")
-			const [servingAmount, servingUnit] = serving.split(" ")
+			
+			// Splits up the value and unit of the serving
+			const match = serving.match(/^(\d+(?:\.\d+)?)(?:\s*([a-zA-Z]+.*)?)?$/);
 
-			// Find the matching food from the reference lists
-			const foodRef =
-				proteinSourcesRef.find((food) => food.name === foodName.trim()) ||
-				carbSourcesRef.find((food) => food.name === foodName.trim()) ||
-				fatSourcesRef.find((food) => food.name === foodName.trim())
+			if (match) {
+				const [_, servingAmount, servingUnit] = match; // Use destructuring to get the captured groups
 
-			if (!foodRef) throw new Error(`Food item ${foodName} not found in references`)
+				// Find the matching food from the reference lists
+				const foodRef =
+					proteinSourcesRef.find((food) => food.name === foodName.trim()) ||
+					carbSourcesRef.find((food) => food.name === foodName.trim()) ||
+					fatSourcesRef.find((food) => food.name === foodName.trim())
 
-			return {
-				...foodRef,
-				desiredAmount: parseFloat(servingAmount),
-				unit: servingUnit.trim(),
+				if (!foodRef) throw new Error(`Food item ${foodName} not found in references`)
+
+				return {
+					...foodRef,
+					desiredAmount: Math.trunc(parseFloat(servingAmount)),
+					unit: servingUnit ? servingUnit.trim() : "pcs",
+				}
+
+			} else {
+				throw new Error(`Invalid serving size format`)
 			}
 		})
 
 		const meal: Meal = {
 			name: mealName,
-			totalCalories: foods.reduce(
-				(sum, food) => sum + food.unitCalories * (food.desiredAmount / food.unitAmount),
-				0
-			),
-			totalCarbs: foods.reduce((sum, food) => sum + food.unitCarbs * (food.desiredAmount / food.unitAmount), 0),
-			totalFats: foods.reduce((sum, food) => sum + food.unitFats * (food.desiredAmount / food.unitAmount), 0),
-			totalProtein: foods.reduce(
-				(sum, food) => sum + food.unitProtein * (food.desiredAmount / food.unitAmount),
-				0
-			),
+			totalCalories: 0,
+			totalCarbs: 0,
+			totalFats: 0,
+			totalProtein: 0,
 			foods,
 		}
+
+		updateMealMacros(meal)
 
 		meals.push(meal)
 	})
 
 	return {
-		totalActualCalories: meals.reduce((sum, meal) => sum + meal.totalCalories, 0),
-		totalActualCarbs: meals.reduce((sum, meal) => sum + meal.totalCarbs, 0),
-		totalActualFats: meals.reduce((sum, meal) => sum + meal.totalFats, 0),
-		totalActualProtein: meals.reduce((sum, meal) => sum + meal.totalProtein, 0),
+		totalActualCalories: Math.trunc(meals.reduce((sum, meal) => sum + meal.totalCalories, 0)),
+		totalActualCarbs: Math.trunc(meals.reduce((sum, meal) => sum + meal.totalCarbs, 0)),
+		totalActualFats: Math.trunc(meals.reduce((sum, meal) => sum + meal.totalFats, 0)),
+		totalActualProtein: Math.trunc(meals.reduce((sum, meal) => sum + meal.totalProtein, 0)),
 		meals,
 	}
 }
@@ -332,29 +148,64 @@ function adjustMacros(
 	desiredProteins: number
 ) {
 	const varianceThreshold = ALLOWED_CALORIE_VARIANCE_PERCENT * desiredCalories
-
-	mealPlan.meals.forEach((meal) => {
-		let calorieDiff = desiredCalories - mealPlan.totalActualCalories
-
-		while (Math.abs(calorieDiff) > varianceThreshold) {
-			const primaryMacros = { carbs: desiredCarbs, fats: desiredFats, proteins: desiredProteins }
+	let calorieDiff = desiredCalories - mealPlan.totalActualCalories
+	let i = 0
+	const maxIterations = 10
+	
+	while (Math.abs(calorieDiff) > varianceThreshold && i < maxIterations) {
+		mealPlan.meals.forEach((meal) => {
+			const primaryMacros = { carb: desiredCarbs, fat: desiredFats, protein: desiredProteins }
 			Object.keys(primaryMacros).forEach((macro) => {
 				meal.foods.forEach((food) => {
 					if (food.primaryMacroClass.toLowerCase() === macro && calorieDiff > 0) {
-						food.desiredAmount *= 1.05 // Increase by 5%
+						food.desiredAmount *= 1.10 // Increase by 10%
 					} else if (food.primaryMacroClass.toLowerCase() === macro && calorieDiff < 0) {
-						food.desiredAmount *= 0.95 // Decrease by 5%
+						food.desiredAmount *= 0.90 // Decrease by 10%
 					}
 				})
 			})
 
-			meal.totalCalories = meal.foods.reduce(
-				(sum, food) => sum + food.unitCalories * (food.desiredAmount / food.unitAmount),
-				0
-			)
-			calorieDiff = desiredCalories - mealPlan.totalActualCalories
-		}
+			// Sum total macros for the meal
+			updateMealMacros(meal)
 
-		mealPlan.totalActualCalories = mealPlan.meals.reduce((sum, meal) => sum + meal.totalCalories, 0)
-	})
+			// Sum total macros for entire meal plan
+			updateMealPlanMacros(mealPlan)
+			calorieDiff = desiredCalories - mealPlan.totalActualCalories
+
+			// Check if the new macros have put the meal plan within the desired calorie range
+			if (Math.abs(calorieDiff) <= varianceThreshold) {
+				return
+			}
+		})
+
+		i++
+	}
+}
+
+// Function to update a meals total macros based on current food amounts
+export function updateMealMacros(meal: Meal) {
+	meal.totalCalories = Math.trunc(meal.foods.reduce(
+		(sum, food) => sum + food.unitCalories * (food.desiredAmount / food.unitAmount),
+		0
+	))
+	meal.totalCarbs = Math.trunc(meal.foods.reduce(
+		(sum, food) => sum + food.unitCarbs * (food.desiredAmount / food.unitAmount),
+		0
+	))
+	meal.totalFats = Math.trunc(meal.foods.reduce(
+		(sum, food) => sum + food.unitFats * (food.desiredAmount / food.unitAmount),
+		0
+	))
+	meal.totalProtein = Math.trunc(meal.foods.reduce(
+		(sum, food) => sum + food.unitProtein * (food.desiredAmount / food.unitAmount),
+		0
+	))
+}
+
+// Function to update the total macros of a meal plan based on the current meal macros
+export function updateMealPlanMacros(mealPlan: MealPlan) {
+	mealPlan.totalActualCalories = Math.trunc(mealPlan.meals.reduce((sum, meal) => sum + meal.totalCalories, 0))
+	mealPlan.totalActualCarbs = Math.trunc(mealPlan.meals.reduce((sum, meal) => sum + meal.totalCarbs, 0))
+	mealPlan.totalActualFats = Math.trunc(mealPlan.meals.reduce((sum, meal) => sum + meal.totalFats, 0))
+	mealPlan.totalActualProtein = Math.trunc(mealPlan.meals.reduce((sum, meal) => sum + meal.totalProtein, 0))
 }
