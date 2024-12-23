@@ -4,45 +4,61 @@ import Food from "./Food"
 import MealPlan from "./MealPlan"
 import Meal from "./Meal"
 import { carbSourcesRef, fatSourcesRef, proteinSourcesRef } from "./foodSourcesRef"
+import { roundingPrecisions } from "./roundingPrecisions"
 
 configDotenv()
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
+const openai = new OpenAI()
+  
 const NUM_RETRIES = 3
-const ALLOWED_CALORIE_VARIANCE_PERCENT: number = 0.03
 
 export const createMealPlan = async (
 	mealsPerDay: number,
 	desiredCalories: number,
-	desiredCarbs: number,
-	desiredFats: number,
-	desiredProteins: number
+	desiredCarbPercentage: number,
+	desiredFatPercentage: number,
+	desiredProteinPercentage: number
 ) => {
 	const openAiApiKey = process.env.OPENAI_API_KEY
 	if (openAiApiKey == null) return null
 
-	const proteinNames = proteinSourcesRef.map((food: Food) => `"${food.name}"`)
-	const carbNames = carbSourcesRef.map((food: Food) => `"${food.name}"`)
-	const fatNames = fatSourcesRef.map((food: Food) => `"${food.name}"`)
+	const proteinNamesAndUnits = proteinSourcesRef.map((food: Food) => `"${food.name} - ${food.unit}"`)
+	const carbNamesAndUnits = carbSourcesRef.map((food: Food) => `"${food.name} - ${food.unit}"`)
+	const fatNamesAndUnits = fatSourcesRef.map((food: Food) => `"${food.name} - ${food.unit}"`)
+
+	const desiredCarbPercentageAsDecimal = desiredCarbPercentage / 100
+	const desiredFatPercentageAsDecimal = desiredFatPercentage / 100
+	const desiredProteinPercentageAsDecimal = desiredProteinPercentage / 100
 
 	try {
 		for (let i = 0; i < NUM_RETRIES; i++) {
 			const prompt = `
-Create a one day meal plan with ${mealsPerDay} meals using the following exact food names. Be sure to include one protein food, one carb food, and one fat food with each meal:
+Create a one day meal plan with ${mealsPerDay} meals using the following exact food names and serving units.
+The meal plan should have very close to ${desiredCalories} calories, ${(desiredCalories * desiredCarbPercentageAsDecimal / 4).toFixed(2)}g of carbs, ${(desiredCalories * desiredProteinPercentageAsDecimal / 4).toFixed(2)}g of protein, and ${(desiredCalories * desiredFatPercentageAsDecimal / 9).toFixed(2)}g of fat.
 
-Proteins: ${proteinNames.join(", ")}
-Carbs: ${carbNames.join(", ")}
-Fats: ${fatNames.join(", ")}
+Proteins: ${proteinNamesAndUnits.join(", ")}
+Carbs: ${carbNamesAndUnits.join(", ")}
+Fats: ${fatNamesAndUnits.join(", ")}
 
 Give your output in this format:
-<Meal Name>
-- <Protein food name> | <serving amount>
-- <Carb food name> | <serving amount>
-- <Fat food name> | <serving amount>
 
-Only give me the names of each meal, the expected serving amounts, and the names of each food going into the meal. Don't give me the summary or any other explanation. Don't list "Meal 1", "Meal 2", etc, in the meal names.
+<Meal Name>
+- <Food name> | <serving amount> <serving unit>
+- <Food name> | <serving amount> <serving unit>
+- <Food name> | <serving amount> <serving unit>
+
+<Meal Name>
+- <Food name> | <serving amount> <serving unit>
+- <Food name> | <serving amount> <serving unit>
+- <Food name> | <serving amount> <serving unit>
+
+Only give me the names of each meal, the expected serving amounts, and the names of each food going into the meal.
+Don't give me the summary or any other explanation. Don't list "Meal 1", "Meal 2", etc, in the meal names.
+And above all, remember to use the exact food names and serving units I provided. Thanks!
 			`
+
+			console.log(prompt)
+
 			const completion = await openai.chat.completions.create({
 				messages: [{ role: "system", content: prompt }],
 				temperature: 0.5,
@@ -54,7 +70,8 @@ Only give me the names of each meal, the expected serving amounts, and the names
 
 			try {
 				const mealPlan = parseMealPlan(mealPlanString)
-				adjustMacros(mealPlan, desiredCalories, desiredCarbs, desiredFats, desiredProteins)
+
+				adjustMacros(mealPlan, desiredCalories, desiredCarbPercentageAsDecimal, desiredFatPercentageAsDecimal, desiredProteinPercentageAsDecimal)
 				return mealPlan
 			} catch (error) {
 				console.log(error)
@@ -85,7 +102,7 @@ export function parseMealPlan(mealPlanText: string): MealPlan {
 	const mealBlocks = mealPlanText.trim().split("\n\n")
 
 	mealBlocks.forEach((block) => {
-		console.log(`In for each block for block = \'${block}\'`)
+		// console.log(`In for each block for block = \'${block}\'`)
 		const lines = block.split("\n")
 		const mealName = lines[0].trim()
 
@@ -140,46 +157,145 @@ export function parseMealPlan(mealPlanText: string): MealPlan {
 	}
 }
 
-function adjustMacros(
-	mealPlan: MealPlan,
-	desiredCalories: number,
-	desiredCarbs: number,
-	desiredFats: number,
-	desiredProteins: number
-) {
-	const varianceThreshold = ALLOWED_CALORIE_VARIANCE_PERCENT * desiredCalories
-	let calorieDiff = desiredCalories - mealPlan.totalActualCalories
-	let i = 0
-	const maxIterations = 10
-	
-	while (Math.abs(calorieDiff) > varianceThreshold && i < maxIterations) {
-		mealPlan.meals.forEach((meal) => {
-			const primaryMacros = { carb: desiredCarbs, fat: desiredFats, protein: desiredProteins }
-			Object.keys(primaryMacros).forEach((macro) => {
-				meal.foods.forEach((food) => {
-					if (food.primaryMacroClass.toLowerCase() === macro && calorieDiff > 0) {
-						food.desiredAmount *= 1.10 // Increase by 10%
-					} else if (food.primaryMacroClass.toLowerCase() === macro && calorieDiff < 0) {
-						food.desiredAmount *= 0.90 // Decrease by 10%
-					}
-				})
-			})
+function roundToNaturalMeasurement(amount: number, unit: string): number {
+    const precision = roundingPrecisions[unit.toLowerCase()] || 2; // Default to 2 if unit not found
+    return Math.round(amount * precision) / precision;
+}
 
-			// Sum total macros for the meal
-			updateMealMacros(meal)
+export function adjustMacros(mealPlan: MealPlan, desiredCalories: number, carbPercentage: number, fatPercentage: number, proteinPercentage: number): MealPlan {
+    const varianceThreshold = 0.03; // 3%
+    const maxIterations = 10000; // Maximum number of iterations for the while loop
 
-			// Sum total macros for entire meal plan
-			updateMealPlanMacros(mealPlan)
-			calorieDiff = desiredCalories - mealPlan.totalActualCalories
+    const desiredCarbs = desiredCalories * carbPercentage / 4; // 1 gram of carbs = 4 calories
+    const desiredFats = desiredCalories * fatPercentage / 9; // 1 gram of fat = 9 calories
+    const desiredProteins = desiredCalories * proteinPercentage / 4; // 1 gram of protein = 4 calories
 
-			// Check if the new macros have put the meal plan within the desired calorie range
-			if (Math.abs(calorieDiff) <= varianceThreshold) {
-				return
-			}
-		})
+    updateMealPlanMacros(mealPlan);
 
-		i++
-	}
+    const isWithinVariance = (actual: number, desired: number) => Math.abs(actual - desired) / desired <= varianceThreshold;
+
+    const getMacroDifference = () => {
+        const carbDiff = (mealPlan.totalActualCarbs - desiredCarbs) * 4; // Convert to calories
+        const fatDiff = (mealPlan.totalActualFats - desiredFats) * 9; // Convert to calories
+        const proteinDiff = (mealPlan.totalActualProtein - desiredProteins) * 4; // Convert to calories
+        const calorieDiff = mealPlan.totalActualCalories - desiredCalories;
+
+        return { carbDiff, fatDiff, proteinDiff, calorieDiff };
+    };
+
+    const adjustFoodAmount = (food: Food, incrementPercentage: number, increase: boolean) => {
+        food.desiredAmount += increase ? food.desiredAmount * incrementPercentage : -food.desiredAmount * incrementPercentage;
+        // food.desiredAmount = roundToNaturalMeasurement(food.desiredAmount, food.unit);
+    };
+
+    const incrementPercentage = 0.1; // 10%
+    let iterationCount = 0;
+
+    while (
+        (!isWithinVariance(mealPlan.totalActualCalories, desiredCalories) ||
+        !isWithinVariance(mealPlan.totalActualCarbs, desiredCarbs) ||
+        !isWithinVariance(mealPlan.totalActualFats, desiredFats) ||
+        !isWithinVariance(mealPlan.totalActualProtein, desiredProteins)) &&
+        iterationCount < maxIterations
+    ) {
+        const { carbDiff, fatDiff, proteinDiff, calorieDiff } = getMacroDifference();
+
+        if (!isWithinVariance(mealPlan.totalActualCalories, desiredCalories)) {
+            const macroDiffs = [
+                { macro: 'Carb', diff: carbDiff },
+                { macro: 'Fat', diff: fatDiff },
+                { macro: 'Protein', diff: proteinDiff }
+            ];
+            const largestNegativeDiffMacro = macroDiffs.reduce((prev, current) => (prev.diff < current.diff ? prev : current)).macro;
+            const largestPositiveDiffMacro = macroDiffs.reduce((prev, current) => (prev.diff > current.diff ? prev : current)).macro;
+
+			// console.log(`Largest negative diff macro = ${largestNegativeDiffMacro}`)
+			// console.log(`Largest positive diff macro = ${largestPositiveDiffMacro}`)
+
+            if (calorieDiff < 0) {
+                // Increase calories
+                const foodsToIncrease = mealPlan.meals.flatMap(meal => meal.foods.filter(food => food.primaryMacroClass === largestNegativeDiffMacro && food.desiredAmount < food.maxDesiredAmount));
+                const randomFood = foodsToIncrease[Math.floor(Math.random() * foodsToIncrease.length)];
+                adjustFoodAmount(randomFood, incrementPercentage, true);
+            } else {
+                // Decrease calories
+                const foodsToDecrease = mealPlan.meals.flatMap(meal => meal.foods.filter(food => food.primaryMacroClass === largestPositiveDiffMacro));
+                const randomFood = foodsToDecrease[Math.floor(Math.random() * foodsToDecrease.length)];
+                adjustFoodAmount(randomFood, incrementPercentage, false);
+            }
+        } else {
+            // Adjust the macro with the largest absolute difference in calories
+            const macroDiffs = [
+                { macro: 'Carb', diff: Math.abs(carbDiff) },
+                { macro: 'Fat', diff: Math.abs(fatDiff) },
+                { macro: 'Protein', diff: Math.abs(proteinDiff) }
+            ];
+            const largestDiffMacro = macroDiffs.reduce((prev, current) => (prev.diff > current.diff ? prev : current)).macro;
+
+			// print out the largestDiffMacro
+			// console.log(`Largest diff macro = ${largestDiffMacro}`)
+
+            if (largestDiffMacro === 'Carb') {
+                if (carbDiff < 0) {
+                    // Increase carbs
+                    const foodsToIncrease = mealPlan.meals.flatMap(meal => meal.foods.filter(food => food.primaryMacroClass === 'Carb' && food.desiredAmount < food.maxDesiredAmount));
+                    const randomFood = foodsToIncrease[Math.floor(Math.random() * foodsToIncrease.length)];
+                    adjustFoodAmount(randomFood, incrementPercentage, true);
+                } else {
+                    // Decrease carbs
+                    const foodsToDecrease = mealPlan.meals.flatMap(meal => meal.foods.filter(food => food.primaryMacroClass === 'Carb'));
+                    const randomFood = foodsToDecrease[Math.floor(Math.random() * foodsToDecrease.length)];
+                    adjustFoodAmount(randomFood, incrementPercentage, false);
+                }
+            } else if (largestDiffMacro === 'Fat') {
+                if (fatDiff < 0) {
+                    // Increase fats
+                    const foodsToIncrease = mealPlan.meals.flatMap(meal => meal.foods.filter(food => food.primaryMacroClass === 'Fat' && food.desiredAmount < food.maxDesiredAmount));
+                    const randomFood = foodsToIncrease[Math.floor(Math.random() * foodsToIncrease.length)];
+                    adjustFoodAmount(randomFood, incrementPercentage, true);
+                } else {
+                    // Decrease fats
+                    const foodsToDecrease = mealPlan.meals.flatMap(meal => meal.foods.filter(food => food.primaryMacroClass === 'Fat'));
+                    const randomFood = foodsToDecrease[Math.floor(Math.random() * foodsToDecrease.length)];
+                    adjustFoodAmount(randomFood, incrementPercentage, false);
+                }
+            } else if (largestDiffMacro === 'Protein') {
+                if (proteinDiff < 0) {
+                    // Increase proteins
+                    const foodsToIncrease = mealPlan.meals.flatMap(meal => meal.foods.filter(food => food.primaryMacroClass === 'Protein' && food.desiredAmount < food.maxDesiredAmount));
+                    const randomFood = foodsToIncrease[Math.floor(Math.random() * foodsToIncrease.length)];
+                    adjustFoodAmount(randomFood, incrementPercentage, true);
+                } else {
+                    // Decrease proteins
+                    const foodsToDecrease = mealPlan.meals.flatMap(meal => meal.foods.filter(food => food.primaryMacroClass === 'Protein'));
+                    const randomFood = foodsToDecrease[Math.floor(Math.random() * foodsToDecrease.length)];
+                    adjustFoodAmount(randomFood, incrementPercentage, false);
+                }
+            }
+        }
+
+        // Update meal plan macros
+        updateMealPlanMacros(mealPlan);
+
+        iterationCount++;
+    }
+
+    // Round desired amount to nearest natural measurement based on unit after adjustments
+    mealPlan.meals.forEach(meal => {
+        meal.foods.forEach(food => {
+            food.desiredAmount = roundToNaturalMeasurement(food.desiredAmount, food.unit);
+        });
+    });
+
+    // Recalculate totals after rounding
+    updateMealPlanMacros(mealPlan);
+
+	// Go through meal plan and find foods that don't have any amount and remove them
+	mealPlan.meals.forEach(meal => {
+		meal.foods = meal.foods.filter(food => food.desiredAmount > 0)
+	})
+
+    return mealPlan;
 }
 
 // Function to update a meals total macros based on current food amounts
@@ -204,6 +320,7 @@ export function updateMealMacros(meal: Meal) {
 
 // Function to update the total macros of a meal plan based on the current meal macros
 export function updateMealPlanMacros(mealPlan: MealPlan) {
+	mealPlan.meals.forEach(meal => updateMealMacros(meal))
 	mealPlan.totalActualCalories = Math.trunc(mealPlan.meals.reduce((sum, meal) => sum + meal.totalCalories, 0))
 	mealPlan.totalActualCarbs = Math.trunc(mealPlan.meals.reduce((sum, meal) => sum + meal.totalCarbs, 0))
 	mealPlan.totalActualFats = Math.trunc(mealPlan.meals.reduce((sum, meal) => sum + meal.totalFats, 0))

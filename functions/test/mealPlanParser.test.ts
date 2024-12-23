@@ -15,40 +15,30 @@ test('parseAndTransformMealPlan returns empty meal plan if empty text passed', (
 test('parseAndTransformMealPlan can parse meal plan', () => {
     const input = `
         Breakfast
-        - Fried Tofu | 100g
+        - Grilled Chicken Breast | 6 oz
         - Whole Wheat Bread | 2 slices
-        - Peanut Butter | 2 tbsp
+        - Egg Yolk | 2 large
 
-        Mid-Morning Snack
+        Morning Snack
         - Protein Scoop | 1 scoop
-        - Apple (medium) | 1
-        - Almond Butter | 1 tbsp
+        - Apple | 1 medium
+        - Almond Butter | 1 tablespoon
 
         Lunch
-        - Grilled Chicken Breast | 6oz
-        - White Rice (cooked) | 1 cup
-        - Olive Oil | 1 tbsp
+        - Grilled Steak | 150 g
+        - White Rice | 1 cup
+        - Olive Oil | 1 tablespoon
 
         Afternoon Snack
-        - Garbonzo Beans | 1 cup
-        - Sweet Potato (medium, cooked) | 1
-        - Egg Yolk (large) | 1
+        - Fried Tofu | 100 g
+        - Sweet Potato | 1 medium
+        - Peanut Butter | 1 tablespoon
 
         Dinner
-        - Grilled Steak | 200g
-        - Pasta (cooked) | 1 cup
-        - Coconut Oil | 1 tbsp
+        - Garbonzo Beans | 200 g
+        - Pasta | 1 cup
+        - Coconut Oil | 1 tablespoon
     `
-    // const expectedMealPlan: MealPlan = {
-    //     totalActualCalories: 0,
-    //     totalActualCarbs: 0,
-    //     totalActualFats: 0,
-    //     totalActualProtein: 0,
-    //     meals: [
-
-    //     ]
-    // }
-    // expect(parseAndTransformMealPlan(input)).toEqual(expectedMealPlan)
 
     // For now just get what the output should be
     const output = parseMealPlan(input)
